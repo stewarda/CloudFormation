@@ -29,9 +29,9 @@
     },
 
     "CorpCIDR" : {
-      "Description" : "Specify the CIDR block of the corporate network (used to define security group rules)",
+      "Description" : "Specify the CIDR block of the corporate network (172.16.0.0/16)",
       "Type" : "String",
-      "Default" :  "10.0.0.0/8"
+      "Default" :  "172.16.0.0/16"
     },
 
     "VPCCIDR" : {
@@ -128,16 +128,14 @@
       "Description" : "What is the name of the VPC ? For example it or core (used for tagging)",
       "Type": "String",
       "MinLength": "3",
-      "MaxLength": "25",
-      "AllowedPattern" : "[a-z]*",
-      "ConstraintDescription": "must be all lower case with no spaces"
+      "MaxLength": "25"
     },
 
     "EnvironmentName" : {
       "Description" : "What environment is this VPC supporting qa/prod/stage",
       "Type": "String",
-      "AllowedValues" : [ "prod","qa","stage" ],
-      "ConstraintDescription": "must be prod, qa or stage"
+      "AllowedValues" : [ "prod","qa","stage","test" ],
+      "ConstraintDescription": "must be prod, qa, stage or test"
     },
 
     "BastionInstanceType" : {
@@ -146,7 +144,6 @@
       "Default" : "t2.micro",
       "AllowedValues" : [ "t2.micro","t2.small","t2.medium","m3.medium" ]
     }
-
   },
 
   "Conditions" : {
@@ -305,7 +302,7 @@
         "Tags" : [
           {
             "Key" : "Name",
-            "Value" : { "Fn::Join" : [ "-", [ { "Ref" : "VPCName" }, { "Ref" : "EnvironmentName" }] ] }
+            "Value" : "Internet Gateway"
           },
           {
             "Key" : "Function",
@@ -338,7 +335,7 @@
         "Tags" : [
           {
             "Key" : "Name",
-            "Value" : { "Fn::Join" : [ "-", [ { "Ref" : "VPCName" }, { "Ref" : "EnvironmentName" }] ] }
+            "Value" : "PrivateGateway"
           },
           {
             "Key" : "Function",
@@ -356,7 +353,7 @@
       }
    },
 
-   "AttachIVirtualPrivateGateway" : {
+   "AttachVirtualPrivateGateway" : {
        "Type" : "AWS::EC2::VPCGatewayAttachment",
        "Properties" : {
          "VpcId" : { "Ref" : "VPC" },
@@ -385,7 +382,7 @@
           },
           {
             "Key" : "Name",
-            "Value" : "Application Subnet AZ1"
+            "Value" : "Application-AZ1"
           }
         ]
       }
@@ -412,7 +409,7 @@
           },
           {
             "Key" : "Name",
-            "Value" : "Application Subnet AZ2"
+            "Value" : "Application-AZ2"
           }
         ]
       }
@@ -439,7 +436,7 @@
           },
           {
             "Key" : "Name",
-            "Value" : "Database Subnet AZ1"
+            "Value" : "Database-AZ1"
           }
         ]
       }
@@ -466,7 +463,7 @@
           },
           {
             "Key" : "Name",
-            "Value" : "Database Subnet AZ2"
+            "Value" : "Database-AZ2"
           }
         ]
       }
@@ -493,7 +490,7 @@
           },
           {
             "Key" : "Name",
-            "Value" : "Management Subnet AZ1"
+            "Value" : "Management-AZ1"
           }
         ]
       }
@@ -520,7 +517,7 @@
           },
           {
             "Key" : "Name",
-            "Value" : "Management Subnet AZ2"
+            "Value" : "Management-AZ2"
           }
         ]
       }
@@ -547,7 +544,7 @@
           },
           {
             "Key" : "Name",
-            "Value" : "Public Subnet AZ1"
+            "Value" : "Public-AZ1"
           }
         ]
       }
@@ -574,7 +571,7 @@
           },
           {
             "Key" : "Name",
-            "Value" : "Public Subnet AZ2"
+            "Value" : "Public-AZ2"
           }
         ]
       }
@@ -582,13 +579,13 @@
 
     "PublicRouteTable" : {
       "Type" : "AWS::EC2::RouteTable",
-      "DependsOn" : "AttachIVirtualPrivateGateway",
+      "DependsOn" : "AttachInternetGateway",
       "Properties" : {
         "VpcId" : {"Ref" : "VPC"},
         "Tags" : [
           {
             "Key" : "Name",
-            "Value" : { "Fn::Join" : [ "-", [ { "Ref" : "VPCName" }, { "Ref" : "EnvironmentName" },"Public"] ] }
+            "Value" : "Public"
           },
           {
             "Key" : "Function",
@@ -606,23 +603,24 @@
       }
     },
 
-    "VGWRoutePropPublicRouteTable" : {
-      "Type" : "AWS::EC2::VPNGatewayRoutePropagation",
+    "PublicRoute" : {
+      "Type" : "AWS::EC2::Route",
       "Properties" : {
-        "RouteTableIds" : [{"Ref" : "PublicRouteTable"}],
-        "VpnGatewayId" : {"Ref" : "VirtualPrivateGateway"}
+        "RouteTableId" : { "Ref" : "PublicRouteTable" },
+        "DestinationCidrBlock" : "0.0.0.0/0",
+        "GatewayId" : { "Ref" : "InternetGateway" }
       }
     },
 
-    "PrivateRouteTable" : {
+    "PrivateRouteTableAZ1" : {
       "Type" : "AWS::EC2::RouteTable",
-      "DependsOn" : "AttachIVirtualPrivateGateway",
+      "DependsOn" : "AttachVirtualPrivateGateway",
       "Properties" : {
         "VpcId" : {"Ref" : "VPC"},
         "Tags" : [
           {
             "Key" : "Name",
-            "Value" : { "Fn::Join" : [ "-", [ { "Ref" : "VPCName" }, { "Ref" : "EnvironmentName" },"Private Route Table"] ] }
+            "Value" : "Private AZ1"
           },
           {
             "Key" : "Function",
@@ -640,29 +638,63 @@
       }
     },
 
-    "VGWRoutePropPrivateRouteTable" : {
+    "PrivateRouteAZ1" : {
+      "Type" : "AWS::EC2::Route",
+      "Properties" : {
+        "RouteTableId" : { "Ref" : "PrivateRouteTableAZ1" },
+        "DestinationCidrBlock" : "0.0.0.0/0",
+        "InstanceId" : { "Ref" : "NATInstanceAZ1" }
+      }
+    },
+
+    "VGWRoutePropPrivateRouteTableAZ1" : {
       "Type" : "AWS::EC2::VPNGatewayRoutePropagation",
       "Properties" : {
-        "RouteTableIds" : [{"Ref" : "PrivateRouteTable"}],
+        "RouteTableIds" : [{"Ref" : "PrivateRouteTableAZ1"}],
         "VpnGatewayId" : {"Ref" : "VirtualPrivateGateway"}
       }
     },
 
-    "PublicRoute" : {
-      "Type" : "AWS::EC2::Route",
+    "PrivateRouteTableAZ2" : {
+      "Type" : "AWS::EC2::RouteTable",
+      "DependsOn" : "AttachVirtualPrivateGateway",
       "Properties" : {
-        "RouteTableId" : { "Ref" : "PublicRouteTable" },
-        "DestinationCidrBlock" : "0.0.0.0/0",
-        "GatewayId" : { "Ref" : "InternetGateway" }
+        "VpcId" : {"Ref" : "VPC"},
+        "Tags" : [
+          {
+            "Key" : "Name",
+            "Value" : "Private AZ2"
+          },
+          {
+            "Key" : "Function",
+            "Value" : "Route Table"
+          },
+          {
+            "Key" : "Environment",
+            "Value" : { "Ref" : "EnvironmentName" }
+          },
+          {
+            "Key" : "Network",
+            "Value" : "Private"
+          }
+        ]
       }
     },
 
-    "PrivateRoute" : {
+    "PrivateRouteAZ2" : {
       "Type" : "AWS::EC2::Route",
       "Properties" : {
-        "RouteTableId" : { "Ref" : "PrivateRouteTable" },
+        "RouteTableId" : { "Ref" : "PrivateRouteTableAZ2" },
         "DestinationCidrBlock" : "0.0.0.0/0",
-        "InstanceId" : { "Ref" : "NATInstance" }
+        "InstanceId" : { "Ref" : "NATInstanceAZ2" }
+      }
+    },
+
+    "VGWRoutePropPrivateRouteTableAZ2" : {
+      "Type" : "AWS::EC2::VPNGatewayRoutePropagation",
+      "Properties" : {
+        "RouteTableIds" : [{"Ref" : "PrivateRouteTableAZ2"}],
+        "VpnGatewayId" : {"Ref" : "VirtualPrivateGateway"}
       }
     },
 
@@ -686,7 +718,7 @@
       "Type" : "AWS::EC2::SubnetRouteTableAssociation",
       "Properties" : {
         "SubnetId" : { "Ref" : "ManagementSubnetAZ1" },
-        "RouteTableId" : { "Ref" : "PrivateRouteTable" }
+        "RouteTableId" : { "Ref" : "PrivateRouteTableAZ1" }
       }
     },
 
@@ -694,7 +726,7 @@
       "Type" : "AWS::EC2::SubnetRouteTableAssociation",
       "Properties" : {
         "SubnetId" : { "Ref" : "ManagementSubnetAZ2" },
-        "RouteTableId" : { "Ref" : "PrivateRouteTable" }
+        "RouteTableId" : { "Ref" : "PrivateRouteTableAZ2" }
       }
     },
 
@@ -702,14 +734,14 @@
       "Type" : "AWS::EC2::SubnetRouteTableAssociation",
       "Properties" : {
         "SubnetId" : { "Ref" : "ApplicationSubnetAZ1" },
-        "RouteTableId" : { "Ref" : "PrivateRouteTable" }
+        "RouteTableId" : { "Ref" : "PrivateRouteTableAZ1" }
       }
     },
     "ApplicationSubnetRouteTableAssociation2" : {
       "Type" : "AWS::EC2::SubnetRouteTableAssociation",
       "Properties" : {
         "SubnetId" : { "Ref" : "ApplicationSubnetAZ2" },
-        "RouteTableId" : { "Ref" : "PrivateRouteTable" }
+        "RouteTableId" : { "Ref" : "PrivateRouteTableAZ2" }
       }
     },
 
@@ -717,14 +749,14 @@
       "Type" : "AWS::EC2::SubnetRouteTableAssociation",
       "Properties" : {
         "SubnetId" : { "Ref" : "DatabaseSubnetAZ1" },
-        "RouteTableId" : { "Ref" : "PrivateRouteTable" }
+        "RouteTableId" : { "Ref" : "PrivateRouteTableAZ1" }
       }
     },
     "DatabaseSubnetRouteTableAssociation2" : {
       "Type" : "AWS::EC2::SubnetRouteTableAssociation",
       "Properties" : {
         "SubnetId" : { "Ref" : "DatabaseSubnetAZ2" },
-        "RouteTableId" : { "Ref" : "PrivateRouteTable" }
+        "RouteTableId" : { "Ref" : "PrivateRouteTableAZ2" }
       }
     },
 
@@ -735,7 +767,7 @@
         "Tags" : [
           {
             "Key" : "Name",
-            "Value" : { "Fn::Join" : [ "-", [ { "Ref" : "VPCName" }, { "Ref" : "EnvironmentName" },"Public Subnet ACLs"] ] }
+            "Value" : "Public-Subnet-ACL"
           },
           {
             "Key" : "Layer",
@@ -760,7 +792,7 @@
         "Tags" : [
           {
             "Key" : "Name",
-            "Value" : { "Fn::Join" : [ "-", [ { "Ref" : "VPCName" }, { "Ref" : "EnvironmentName" },"Private Subnet ACLs"] ] }
+            "Value" : "Private-Subnet-ACL"
           },
           {
             "Key" : "Layer",
@@ -898,7 +930,7 @@
       }
     },
 
-    "NATInstance" : {
+    "NATInstanceAZ1" : {
       "Type" : "AWS::EC2::Instance",
       "DependsOn" : "InternetGateway",
       "Metadata" : {
@@ -924,10 +956,10 @@
                 "content": { "Fn::Join" : ["", [
                   "[cfn-auto-reloader-hook]\n",
                   "triggers=post.update\n",
-                  "path=Resources.NATInstance.Metadata.AWS::CloudFormation::Init\n",
+                  "path=Resources.NATInstanceAZ1.Metadata.AWS::CloudFormation::Init\n",
                   "action=/opt/aws/bin/cfn-init -v ",
                   "         --stack ", { "Ref" : "AWS::StackName" },
-                  "         --resource NATInstance ",
+                  "         --resource NATInstanceAZ1 ",
                   "         --configsets install_all ",
                   "         --region ", { "Ref" : "AWS::Region" }, "\n",
                   "runas=root\n"
@@ -1026,7 +1058,174 @@
               {"Ref" : "NATAMI"}
             ]},
         "NetworkInterfaces" : [{
-          "GroupSet"                 : [{ "Ref" : "SGNAT" }],
+          "GroupSet"                 : [{ "Ref" : "SGNATInstances" }],
+          "AssociatePublicIpAddress" : "true",
+          "DeviceIndex"              : "0",
+          "DeleteOnTermination"      : "true",
+          "SubnetId"                 : { "Ref" : "PublicSubnetAZ1" }
+        }],
+        "UserData"       : { "Fn::Base64" : { "Fn::Join" : ["", [
+             "#!/bin/bash -xe\n",
+             "yum update -y\n",
+
+             "/opt/aws/bin/cfn-init -v ",
+             "         --stack ", { "Ref" : "AWS::StackName" },
+             "         --resource NATInstanceAZ1 ",
+             "         --configsets install_all ",
+             "         --region ", { "Ref" : "AWS::Region" }, "\n",
+
+             "/opt/aws/bin/cfn-signal -e $? ",
+             "         --stack ", { "Ref" : "AWS::StackName" },
+             "         --resource NATInstanceAZ1 ",
+             "         --region ", { "Ref" : "AWS::Region" }, "\n"
+        ]]}},
+        "Tags" : [
+          {
+            "Key" : "Environment",
+            "Value" : { "Ref" : "EnvironmentName" }
+          },
+          {
+            "Key" : "Name",
+            "Value" : "NAT-AZ1"
+          }
+        ]
+      },
+      "CreationPolicy" : {
+        "ResourceSignal" : {
+          "Timeout" : "PT15M"
+        }
+      }
+    },
+
+    "NATInstanceAZ2" : {
+      "Type" : "AWS::EC2::Instance",
+      "DependsOn" : "InternetGateway",
+      "Metadata" : {
+        "AWS::CloudFormation::Init" : {
+          "configSets" : {
+            "install_all" : [ "install_cfn", "install_logs" ]
+          },
+
+          "install_cfn" : {
+            "files" : {
+              "/etc/cfn/cfn-hup.conf" : {
+                "content" : { "Fn::Join" : ["", [
+                  "[main]\n",
+                  "stack=", { "Ref" : "AWS::StackId" }, "\n",
+                  "region=", { "Ref" : "AWS::Region" }, "\n"
+                ]]},
+                "mode"    : "000400",
+                "owner"   : "root",
+                "group"   : "root"
+              },
+
+              "/etc/cfn/hooks.d/cfn-auto-reloader.conf" : {
+                "content": { "Fn::Join" : ["", [
+                  "[cfn-auto-reloader-hook]\n",
+                  "triggers=post.update\n",
+                  "path=Resources.NATInstanceAZ2.Metadata.AWS::CloudFormation::Init\n",
+                  "action=/opt/aws/bin/cfn-init -v ",
+                  "         --stack ", { "Ref" : "AWS::StackName" },
+                  "         --resource NATInstanceAZ2 ",
+                  "         --configsets install_all ",
+                  "         --region ", { "Ref" : "AWS::Region" }, "\n",
+                  "runas=root\n"
+                ]]}
+              }
+            },
+
+            "services" : {
+              "sysvinit" : {
+                "cfn-hup" : { "enabled" : "true", "ensureRunning" : "true",
+                              "files" : ["/etc/cfn/cfn-hup.conf", "/etc/cfn/hooks.d/cfn-auto-reloader.conf"]}
+              }
+            }
+          },
+
+          "install_logs": {
+            "packages" : {
+              "yum" : {
+                "awslogs" : []
+              }
+            },
+
+            "files": {
+              "/etc/awslogs/awslogs.conf": {
+                "content": { "Fn::Join": [ "", [
+                  "[general]\n",
+                  "state_file= /var/awslogs/state/agent-state\n",
+
+                  "[/var/log/cloud-init.log]\n",
+                  "file = /var/log/cloud-init.log\n",
+                  "log_group_name = ", { "Ref": "CloudFormationLogs" }, "\n",
+                  "log_stream_name = {instance_id}/cloud-init.log\n",
+                  "datetime_format = \n",
+
+                  "[/var/log/cloud-init-output.log]\n",
+                  "file = /var/log/cloud-init-output.log\n",
+                  "log_group_name = ", { "Ref": "CloudFormationLogs" }, "\n",
+                  "log_stream_name = {instance_id}/cloud-init-output.log\n",
+                  "datetime_format = \n",
+
+                  "[/var/log/cfn-init.log]\n",
+                  "file = /var/log/cfn-init.log\n",
+                  "log_group_name = ", { "Ref": "CloudFormationLogs" }, "\n",
+                  "log_stream_name = {instance_id}/cfn-init.log\n",
+                  "datetime_format = \n",
+
+                  "[/var/log/cfn-hup.log]\n",
+                  "file = /var/log/cfn-hup.log\n",
+                  "log_group_name = ", { "Ref": "CloudFormationLogs" }, "\n",
+                  "log_stream_name = {instance_id}/cfn-hup.log\n",
+                  "datetime_format = \n",
+
+                  "[/var/log/cfn-wire.log]\n",
+                  "file = /var/log/cfn-wire.log\n",
+                  "log_group_name = ", { "Ref": "CloudFormationLogs" }, "\n",
+                  "log_stream_name = {instance_id}/cfn-wire.log\n",
+                  "datetime_format = \n",
+
+                  "[/var/log/httpd]\n",
+                  "file = /var/log/httpd/*\n",
+                  "log_group_name = ", { "Ref": "CloudFormationLogs" }, "\n",
+                  "log_stream_name = {instance_id}/httpd\n",
+                  "datetime_format = %d/%b/%Y:%H:%M:%S\n"
+                ] ] },
+                "mode": "000444",
+                "owner": "root",
+                "group": "root"
+              }
+            },
+            "commands" : {
+              "01_create_state_directory" : {
+                "command" : "mkdir -p /var/awslogs/state"
+              }
+            },
+            "services" : {
+              "sysvinit" : {
+                "awslogs"    : { "enabled" : "true", "ensureRunning" : "true",
+                                 "files" : [ "/etc/awslogs/awslogs.conf" ] }
+              }
+            }
+          }
+        }
+      },
+      "Properties" : {
+        "SourceDestCheck" : "false",
+        "DisableApiTermination" : "true",
+        "Monitoring" : "false",
+        "InstanceType" : { "Ref" : "NATInstanceType" },
+        "IamInstanceProfile" : { "Ref" : "NATLogRoleInstanceProfile" },
+        "ImageId" : {
+            "Fn::If" : [
+              "UseDefaultAMI",
+              { "Fn::FindInMap" : [ "NATRegionArch2AMI", { "Ref" : "AWS::Region" },
+                                          { "Fn::FindInMap" : [ "AWSInstanceType2Arch", { "Ref" : "NATInstanceType" },
+                                          "Arch" ] } ] },
+              {"Ref" : "NATAMI"}
+            ]},
+        "NetworkInterfaces" : [{
+          "GroupSet"                 : [{ "Ref" : "SGNATInstances" }],
           "AssociatePublicIpAddress" : "true",
           "DeviceIndex"              : "0",
           "DeleteOnTermination"      : "true",
@@ -1038,13 +1237,13 @@
 
              "/opt/aws/bin/cfn-init -v ",
              "         --stack ", { "Ref" : "AWS::StackName" },
-             "         --resource NATInstance ",
+             "         --resource NATInstanceAZ2 ",
              "         --configsets install_all ",
              "         --region ", { "Ref" : "AWS::Region" }, "\n",
 
              "/opt/aws/bin/cfn-signal -e $? ",
              "         --stack ", { "Ref" : "AWS::StackName" },
-             "         --resource NATInstance ",
+             "         --resource NATInstanceAZ2 ",
              "         --region ", { "Ref" : "AWS::Region" }, "\n"
         ]]}},
         "Tags" : [
@@ -1053,12 +1252,8 @@
             "Value" : { "Ref" : "EnvironmentName" }
           },
           {
-            "Key" : "Layer",
-            "Value" : "Network"
-          },
-          {
             "Key" : "Name",
-            "Value" : { "Fn::Join" : [ "-", [ "NAT", { "Ref" : "EnvironmentName" }] ] }
+            "Value" : "NAT-AZ2"
           }
         ]
       },
@@ -1135,7 +1330,7 @@
       }
     },
 
-    "BastionInstance" : {
+    "BastionInstanceAZ1" : {
       "Type" : "AWS::EC2::Instance",
       "Metadata" : {
         "Comment1" : "Install the latest software patches and security updates",
@@ -1153,7 +1348,7 @@
         "InstanceType" : { "Ref" : "BastionInstanceType" },
         "DisableApiTermination" : "true",
         "KeyName"  : { "Ref" : "KeyName" },
-        "SubnetId" : { "Ref" : "ApplicationSubnetAZ1" },
+        "SubnetId" : { "Ref" : "ManagementSubnetAZ1" },
         "BlockDeviceMappings" : [
           {
             "DeviceName" : "/dev/xvda",
@@ -1195,30 +1390,97 @@
           "yum install yum-cron-security -y\n"
           ]]}
         },
-        "SecurityGroupIds" : [{ "Ref" : "SGCorporateAccess" }],
+        "SecurityGroupIds" : [{ "Ref" : "SGBastionInstances" }],
         "IamInstanceProfile": { "Ref": "BastionInstanceProfile" },
         "Tags" : [
-          {
-            "Key" : "Function",
-            "Value" : "Bastion Host"
-          },
           {
             "Key" : "Environment",
             "Value" : { "Fn::Join" : [ "-", [ "Bastion", { "Ref" : "EnvironmentName" }] ] }
           },
           {
-            "Key" : "VPC",
-            "Value" : { "Ref" : "VPCName" }
-          },
-          {
             "Key" : "Name",
-            "Value" : { "Fn::Join" : [ "-", [ "Bastion", { "Ref" : "EnvironmentName" }] ] }
+            "Value" : "Bastion-AZ1"
           }
         ]
       }
     },
 
-   "SGNAT" : {
+    "BastionInstanceAZ2" : {
+      "Type" : "AWS::EC2::Instance",
+      "Metadata" : {
+        "Comment1" : "Install the latest software patches and security updates",
+        "AWS::CloudFormation::Init" : {
+          "config" : {
+            "commands" : {
+              "a1" : {
+                "command" : "/usr/bin/yum update -y"
+              }
+            }
+          }
+        }
+      },
+      "Properties" : {
+        "InstanceType" : { "Ref" : "BastionInstanceType" },
+        "DisableApiTermination" : "true",
+        "KeyName"  : { "Ref" : "KeyName" },
+        "SubnetId" : { "Ref" : "ManagementSubnetAZ2" },
+        "BlockDeviceMappings" : [
+          {
+            "DeviceName" : "/dev/xvda",
+            "Ebs" : { "VolumeSize" : "10", "VolumeType":"gp2" }
+          }
+        ],
+        "ImageId" : {
+          "Fn::FindInMap" : [
+            "AWSRegionArch2AMI",
+            {
+              "Ref" : "AWS::Region"
+            },
+            {
+              "Fn::FindInMap" : [
+                "AWSInstanceType2Arch",
+                {
+                  "Ref" : "BastionInstanceType"
+                },
+                "Arch"
+              ]
+            }
+          ]
+        },
+        "UserData"       : { "Fn::Base64" : { "Fn::Join" : ["", [
+          "#!/bin/bash -v\n",
+          "yum update -y aws-cfn-bootstrap\n",
+
+          "# Helper function\n",
+          "function error_exit {\n",
+          "  echo $1\n",
+          "}\n",
+          "/opt/aws/bin/cfn-init -s ", { "Ref" : "AWS::StackName" }, " -r BastionInstance ",
+          "    --region ", { "Ref" : "AWS::Region" }, " || error_exit 'Failed to run cfn-init'\n",
+
+          "# Update latest security patches\n",
+          "yum update -y\n",
+
+          "# Install yum-cron-security\n",
+          "yum install yum-cron-security -y\n"
+          ]]}
+        },
+        "SecurityGroupIds" : [{ "Ref" : "SGBastionInstances" }],
+        "IamInstanceProfile": { "Ref": "BastionInstanceProfile" },
+        "Tags" : [
+          {
+            "Key" : "Environment",
+            "Value" : { "Fn::Join" : [ "-", [ "Bastion", { "Ref" : "EnvironmentName" }] ] }
+          },
+          {
+            "Key" : "Name",
+            "Value" : "Bastion-AZ2"
+          }
+        ]
+      }
+    },
+
+   "SGNATInstances" : {
       "Type" : "AWS::EC2::SecurityGroup",
       "Properties" : {
         "GroupDescription" : "NAT instances security group",
@@ -1235,7 +1497,7 @@
         "Tags" : [
           {
             "Key" : "Name",
-            "Value" : "NAT security group"
+            "Value" : "NAT instances security group"
           },
           {
             "Key" : "Function",
@@ -1253,10 +1515,10 @@
       }
     },
 
-    "SGCorporateAccess" : {
+    "SGBastionInstances" : {
       "Type" : "AWS::EC2::SecurityGroup",
       "Properties" : {
-        "GroupDescription" : "Allows management access from corporate network",
+        "GroupDescription" : "Bastion instances security group used to access VPC from corporate network",
         "VpcId" : {"Ref" : "VPC"},
         "SecurityGroupIngress" : [
           { "IpProtocol" : "tcp", "FromPort" : "22", "ToPort" : "22", "CidrIp" : { "Ref" : "CorpCIDR" } },
@@ -1266,7 +1528,7 @@
         "Tags" : [
           {
             "Key" : "Name",
-            "Value" : "Corporate access security group"
+            "Value" : "Bastion instances security group"
           },
           {
             "Key" : "Function",
@@ -1324,12 +1586,24 @@
         ]]}
     },
 
-    "SGCorporateAccess" : {
-      "Description" : "The ID of the security group used to allow access from the corporate network",
-      "Value" : { "Ref" : "SGCorporateAccess" }
+    "BastionSGID" : {
+      "Description" : "The ID of the security group used for the Bastion instances",
+      "Value" : { "Ref" : "SGBastionInstances" }
+    },
+
+    "NATSGID" : {
+      "Description" : "The ID of the security group used for the NAT instances",
+      "Value" : { "Ref" : "SGNATInstances" }
+    },
+
+    "NATAZ1IP" : {
+      "Description" : "NATAZ1 IP address",
+      "Value" : { "Fn::GetAtt" : [ "NATInstanceAZ1", "PublicIp" ] }
+    },
+
+    "NATAZ2IP" : {
+      "Description" : "NATAZ2 IP address",
+      "Value" : { "Fn::GetAtt" : [ "NATInstanceAZ2", "PublicIp" ] }
     }
-
   }
-
-
 }
